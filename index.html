@@ -96,6 +96,8 @@
       font-weight: 500;
       margin-left: 4px;
     }
+    .stat.bad .v { color: var(--warn); }
+    .stat.ok-bend .v { color: var(--ok); }
     aside {
       border-left: 1px solid var(--line);
       background: var(--panel);
@@ -217,7 +219,7 @@
         <div class="stat"><div class="k">最深点（サグ）</div><div class="v" id="sSag">—<span class="u">m</span></div></div>
         <div class="stat"><div class="k">着底距離 TDP</div><div class="v" id="sTdp">—<span class="u">m</span></div></div>
         <div class="stat"><div class="k">水中重量</div><div class="v" id="sW">—<span class="u">N/m</span></div></div>
-        <div class="stat"><div class="k">最小曲率半径</div><div class="v" id="sR">—<span class="u">m</span></div></div>
+        <div class="stat" id="statR"><div class="k">最小曲率半径 / MBR</div><div class="v" id="sR">—<span class="u">m</span></div></div>
       </div>
     </div>
 
@@ -253,6 +255,8 @@
         <input type="range" id="EA" min="5" max="400" step="1"></label>
       <label class="ctrl"><span class="ctrl-top"><span>法線抗力係数 Cd</span><span class="val" id="vCd"></span></span>
         <input type="range" id="Cd" min="0.2" max="2.0" step="0.05"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>最小曲げ半径 MBR</span><span class="val" id="vMbr"></span></span>
+        <input type="range" id="mbr" min="0.3" max="20" step="0.1"></label>
 
       <div id="buoyBox">
         <h2>浮力区間（レイジーウェーブ）</h2>
@@ -267,8 +271,8 @@
       </div>
 
       <h2>流れ</h2>
-      <label class="ctrl"><span class="ctrl-top"><span>表面流速</span><span class="val" id="vU"></span></span>
-        <input type="range" id="U" min="0" max="6" step="0.1"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>表面流速（負で逆向き）</span><span class="val" id="vU"></span></span>
+        <input type="range" id="U" min="-6" max="6" step="0.1"></label>
       <label class="ctrl"><span class="ctrl-top"><span>流速分布</span><span class="val" id="vProf"></span></span>
         <input type="range" id="prof" min="0" max="2" step="1"></label>
       <label class="row-check"><input type="checkbox" id="overlay" checked> 流れなしの形を重ねる</label>
@@ -279,9 +283,9 @@
 
       <div class="note">
         各節点で張力・水中重量・Morison 抗力の釣り合いを解き、静的な形を出しています。
-        波・浮体運動・曲げ剛性・3D は入れていません。カテナリーの
+        波・浮体運動・曲げ剛性・3D は入れていません。MBR はできた形の判定だけで、曲がりすぎを防いではいません。カテナリーの
         <code>y = a cosh(x/a)</code>（<code>a = H/w</code>）は流れなし・着底なしのときだけ厳密です。
-        流れが入ると見かけの「重力」が傾き、ライン全体が下流へ押し出されます。
+        流れが入ると見かけの「重力」が傾き、ライン全体が下流へ押し出されます。流速は負にすると右→左になります。
       </div>
     </aside>
   </div>
@@ -313,6 +317,7 @@
       D: 0.04,
       EA: 40,
       Cd: 1.2,
+      mbr: 1.5,
       U: 0,
       prof: 0,
       wet: false,
@@ -325,17 +330,18 @@
 
     const presets = {
       hang: [
-        { name: "教科書", L: 52, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false },
-        { name: "たるみ大", L: 70, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false },
-        { name: "流れで流される", L: 55, span: 40, drop: 0, mass: 6, D: 0.12, EA: 30, Cd: 1.4, U: 3, wet: true },
+        { name: "教科書", L: 52, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
+        { name: "たるみ大", L: 70, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
+        { name: "流れで流される", L: 55, span: 40, drop: 0, mass: 6, D: 0.12, EA: 30, Cd: 1.4, U: 3, wet: true, mbr: 2 },
+        { name: "逆向きの流れ", L: 55, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: -3, wet: true, mbr: 1.5 },
       ],
       moor: [
-        { name: "浅い係留", L: 220, span: 180, depth: 80, zFair: 10, mass: 90, D: 0.08, EA: 200, Cd: 1.0, U: 0 },
-        { name: "秋田イメージ 400m", L: 620, span: 500, depth: 400, zFair: 20, mass: 140, D: 0.1, EA: 300, Cd: 1.0, U: 0.5 },
+        { name: "浅い係留", L: 220, span: 180, depth: 80, zFair: 10, mass: 90, D: 0.08, EA: 200, Cd: 1.0, U: 0, mbr: 1 },
+        { name: "秋田イメージ 400m", L: 620, span: 500, depth: 400, zFair: 20, mass: 140, D: 0.1, EA: 300, Cd: 1.0, U: 0.5, mbr: 1.2 },
       ],
       lazy: [
-        { name: "66 kV レイジーウェーブ", L: 320, span: 220, depth: 100, zFair: 15, mass: 55.8, D: 0.184, EA: 80, Cd: 1.2, U: 0, b0: 70, bL: 90, bD: 0.39, bW: 948 },
-        { name: "OC3 風 320 m", L: 530, span: 380, depth: 320, zFair: 20, mass: 55.8, D: 0.184, EA: 120, Cd: 1.2, U: 0.8, b0: 140, bL: 120, bD: 0.39, bW: 948 },
+        { name: "66 kV レイジーウェーブ", L: 320, span: 220, depth: 100, zFair: 15, mass: 55.8, D: 0.184, EA: 80, Cd: 1.2, U: 0, b0: 70, bL: 90, bD: 0.39, bW: 948, mbr: 4 },
+        { name: "OC3 風 320 m", L: 530, span: 380, depth: 320, zFair: 20, mass: 55.8, D: 0.184, EA: 120, Cd: 1.2, U: 0.8, b0: 140, bL: 120, bD: 0.39, bW: 948, mbr: 4 },
       ],
     };
 
@@ -346,6 +352,7 @@
     let lastGuess = null;
     let anim = null;
     let tArrow = 0;
+    let lastBend = null;
 
     function currentAt(z, U, depth, prof) {
       if (U === 0) return 0;
@@ -505,7 +512,7 @@
       let dTx = (-e.e1 * J22 + e.e2 * J12) / det;
       let dTz = (-e.e2 * J11 + e.e1 * J21) / det;
       const nd = Math.hypot(dTx, dTz);
-      const cap = Math.max(Math.hypot(Tx, Tz) * 1.4, U > 3 ? 2000 : 400);
+      const cap = Math.max(Math.hypot(Tx, Tz) * 1.4, Math.abs(U) > 3 ? 2000 : 400);
       if (nd > cap) {
         dTx *= cap / nd;
         dTz *= cap / nd;
@@ -601,11 +608,12 @@
         }
         let Tx = guess && guess.Tx ? guess.Tx : aw * a;
         let Tz = guess && guess.Tz ? guess.Tz : -aw * a * Math.sinh(p.span / (2 * Math.max(a, 0.2)));
-        Tx = Math.max(Tx, 5, dL * 0.55);
+        Tx = Math.max(Tx, 5);
+        if (U > 0) Tx = Math.max(Tx, dL * 0.55);
         let cur = integrate(p, Tx, Tz, U);
         const e0 = endError(cur, p);
         cur = { ...cur, err: Math.hypot(e0.e1, e0.e2), Tx, Tz };
-        const nIt = U > 2 ? 40 : 22;
+        const nIt = Math.abs(U) > 2 ? 40 : 22;
         for (let it = 0; it < nIt; it++) {
           cur = newtonOnce(p, U, cur.Tx, cur.Tz);
           if (cur.err < 0.08) break;
@@ -620,7 +628,7 @@
       if (p.mode === "lazy") {
         let Tx = (guess && guess.Tx) || Math.max(Math.abs(wetWeight(p.mass, p.D, -1, p)) * 25, 2000);
         let Tz = (guess && guess.Tz) || -Math.abs(wetWeight(p.mass, p.D, -1, p)) * Math.max(p.b0 * 0.5, 25);
-        Tx = Math.max(Tx, dL * 0.4);
+        if (U > 0) Tx = Math.max(Tx, dL * 0.4);
         let cur = fitH(p, U, Tx, Tz);
         for (let it = 0; it < 22; it++) {
           cur = newtonOnce(p, U, cur.Tx, cur.Tz);
@@ -629,12 +637,12 @@
         return cur;
       }
       const g = (guess && isFinite(guess.Tx)) ? guess : m;
-      return fitH(p, U, Math.max(g.Tx, dL * 0.4), g.Tz);
+      return fitH(p, U, Math.max(g.Tx, U > 0 ? dL * 0.4 : 8), g.Tz);
     }
 
     function shootRamped(p, U, guess) {
-      if (U <= 0.6) return shoot(p, U, guess);
-      const n = Math.ceil(U / 0.5);
+      if (Math.abs(U) <= 0.6) return shoot(p, U, guess);
+      const n = Math.ceil(Math.abs(U) / 0.5);
       let g = guess;
       let r = null;
       for (let i = 1; i <= n; i++) {
@@ -664,7 +672,11 @@
         }
       }
       let maxK = 0;
+      let iMinR = 1;
+      const violate = new Uint8Array(n);
+      const onBed = (i) => p.mode !== "hang" && nd.z[i] <= -p.depth + 0.25;
       for (let i = 1; i < n; i++) {
+        if (onBed(i - 1) && onBed(i) && onBed(i + 1)) continue;
         const dx1 = nd.x[i] - nd.x[i - 1];
         const dz1 = nd.z[i] - nd.z[i - 1];
         const dx2 = nd.x[i + 1] - nd.x[i];
@@ -675,7 +687,16 @@
         while (da > Math.PI) da -= 2 * Math.PI;
         while (da < -Math.PI) da += 2 * Math.PI;
         const ds = 0.5 * (Math.hypot(dx1, dz1) + Math.hypot(dx2, dz2));
-        if (ds > 1e-4) maxK = Math.max(maxK, Math.abs(da) / ds);
+        const kappa = ds > 1e-4 ? Math.abs(da) / ds : 0;
+        const rLoc = kappa > 1e-8 ? 1 / kappa : Infinity;
+        if (rLoc < p.mbr) {
+          violate[i - 1] = 1;
+          violate[i] = 1;
+        }
+        if (kappa > maxK) {
+          maxK = kappa;
+          iMinR = i;
+        }
       }
       const sp0 = segProps(0, p);
       const w0 = wetWeight(sp0.mass, sp0.D, nd.z[0] - 0.1, p);
@@ -687,6 +708,9 @@
         hogZ: zMax,
         tdp,
         minR: maxK > 1e-8 ? 1 / maxK : Infinity,
+        iMinR,
+        violate,
+        nViolate: violate.reduce((s, v) => s + v, 0),
         w0,
       };
     }
@@ -708,7 +732,7 @@
       const p = params;
       const U = opts.U != null ? opts.U : p.U;
       let r;
-      if (U > 0 && !opts.keepGuess) {
+      if (Math.abs(U) > 1e-6 && !opts.keepGuess) {
         const g0 = shoot(p, 0, null);
         ghost = { x: Float64Array.from(g0.x), z: Float64Array.from(g0.z) };
         r = shootRamped(p, U, { Tx: g0.Tx, Tz: g0.Tz });
@@ -751,7 +775,12 @@
         ? '—' + '<span class="u">m</span>'
         : fmt(a.tdp, 1) + '<span class="u">m</span>';
       $("sW").innerHTML = fmt(a.w0, 0) + '<span class="u">N/m</span>';
-      $("sR").innerHTML = (a.minR > 500 ? "大" : fmt(a.minR, 1)) + '<span class="u">m</span>';
+      const rTxt = a.minR > 500 ? "大" : fmt(a.minR, 1);
+      $("sR").innerHTML = rTxt + '<span class="u">/ ' + fmt(params.mbr, 1) + ' m</span>';
+      lastBend = a;
+      const ng = a.minR < params.mbr;
+      $("statR").classList.toggle("bad", ng);
+      $("statR").classList.toggle("ok-bend", !ng && isFinite(a.minR));
 
       const chord = Math.hypot(params.span, params.mode === "hang" ? params.drop : (params.depth - params.zFair));
       let msg = "";
@@ -765,6 +794,10 @@
         $("status").textContent = `端点誤差 ${fmt(err, 3)} m · 節点 ${NSEG + 1}`;
       }
       if (err > 3) msg = (msg ? msg + " " : "") + "端点が目標に乗っていません。長さ・水深・水平距離を見直してください。";
+      if (a.minR < params.mbr) {
+        msg = (msg ? msg + " " : "") +
+          `最小曲率半径 ${fmt(a.minR, 2)} m が MBR ${fmt(params.mbr, 1)} m を下回っています（赤）。形は曲げ剛性なしのままです。`;
+      }
       $("warn").textContent = msg;
     }
 
@@ -829,7 +862,7 @@
       ctx.setLineDash([]);
     }
 
-    function drawTension(xf, nd, T) {
+    function drawTension(xf, nd, T, bend) {
       let tmax = 1;
       for (let i = 0; i < T.length; i++) tmax = Math.max(tmax, T[i]);
       for (let i = 0; i < T.length; i++) {
@@ -840,6 +873,17 @@
         ctx.moveTo(xf.X(nd.x[i]), xf.Z(nd.z[i]));
         ctx.lineTo(xf.X(nd.x[i + 1]), xf.Z(nd.z[i + 1]));
         ctx.stroke();
+      }
+      if (bend && bend.violate) {
+        ctx.strokeStyle = "#a24a28";
+        ctx.lineWidth = 4.2;
+        for (let i = 0; i < T.length; i++) {
+          if (!bend.violate[i]) continue;
+          ctx.beginPath();
+          ctx.moveTo(xf.X(nd.x[i]), xf.Z(nd.z[i]));
+          ctx.lineTo(xf.X(nd.x[i + 1]), xf.Z(nd.z[i + 1]));
+          ctx.stroke();
+        }
       }
     }
 
@@ -869,24 +913,28 @@
         ctx.stroke();
 
         const U = p.U;
-        if (U > 0.02) {
+        const absU = Math.abs(U);
+        if (absU > 0.02) {
           ctx.save();
           ctx.strokeStyle = "rgba(40,80,100,0.28)";
           ctx.lineWidth = 1;
           const yBot = p.mode === "hang" ? r.height - 10 : xf.Z(-p.depth) - 6;
           const spacing = 42;
-          const shift = (tArrow * (10 + Math.min(18 * U, 40))) % spacing;
-          const alen = Math.min(22, 10 + U * 1.2);
+          const dir = U >= 0 ? 1 : -1;
+          const speed = 10 + Math.min(18 * absU, 40);
+          const shift = ((tArrow * speed * dir) % spacing + spacing) % spacing;
+          const alen = Math.min(22, 10 + absU * 1.2);
           for (let y = zSurf + 16; y < yBot; y += 24) {
             for (let x = 8; x < r.width - 16; x += spacing) {
               const xx = x + shift;
               if (xx < 6 || xx > r.width - 18) continue;
+              const x1 = xx + dir * alen;
               ctx.beginPath();
               ctx.moveTo(xx, y);
-              ctx.lineTo(xx + alen, y);
-              ctx.moveTo(xx + alen - 4, y - 3);
-              ctx.lineTo(xx + alen, y);
-              ctx.lineTo(xx + alen - 4, y + 3);
+              ctx.lineTo(x1, y);
+              ctx.moveTo(x1 - dir * 4, y - 3);
+              ctx.lineTo(x1, y);
+              ctx.lineTo(x1 - dir * 4, y + 3);
               ctx.stroke();
             }
           }
@@ -913,10 +961,26 @@
         ctx.fillText(`${xw.toFixed(0)} m`, x + 4, r.height - 10);
       }
 
-      if (p.overlay && ghost && p.U > 0.01 && Math.max(...ghost.x) > p.span * 0.25) {
+      if (p.overlay && ghost && Math.abs(p.U) > 0.01 && Math.max(...ghost.x) > p.span * 0.25) {
         drawCable(xf, ghost.x, ghost.z, "#5d6d78", 1.6, [5, 4]);
       }
-      if (nodes && lastT) drawTension(xf, nodes, lastT);
+      if (nodes && lastT) {
+        const bend = lastBend || analytics(nodes, lastT, p);
+        drawTension(xf, nodes, lastT, bend);
+        if (bend && isFinite(bend.minR) && bend.iMinR != null) {
+          const i = bend.iMinR;
+          ctx.beginPath();
+          ctx.arc(xf.X(nodes.x[i]), xf.Z(nodes.z[i]), 6, 0, Math.PI * 2);
+          ctx.fillStyle = bend.minR < p.mbr ? "#a24a28" : "#2f6b4f";
+          ctx.fill();
+          ctx.fillStyle = bend.minR < p.mbr ? "#a24a28" : "#1c1916";
+          ctx.fillText(
+            `Rmin ${bend.minR > 500 ? "大" : bend.minR.toFixed(1)} m`,
+            xf.X(nodes.x[i]) + 8,
+            xf.Z(nodes.z[i]) - 8
+          );
+        }
+      }
 
       if (nodes) {
         ctx.fillStyle = "#1c1916";
@@ -931,7 +995,7 @@
       ctx.fillText("x", r.width - 18, r.height - 10);
       ctx.fillText(p.mode === "hang" ? "z ↑" : "水面 z = 0", 8, xf.Z(0) - 6);
 
-      if (p.overlay && ghost && p.U > 0.01) {
+      if (p.overlay && ghost && Math.abs(p.U) > 0.01) {
         ctx.setLineDash([5, 4]);
         ctx.strokeStyle = "#5d6d78";
         ctx.lineWidth = 1.6;
@@ -951,6 +1015,16 @@
         ctx.fillStyle = "#1c1916";
         ctx.fillText("流れあり（色＝張力）", 140, 20);
       }
+      if (lastBend && lastBend.minR < p.mbr) {
+        ctx.strokeStyle = "#a24a28";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(12, 36);
+        ctx.lineTo(36, 36);
+        ctx.stroke();
+        ctx.fillStyle = "#a24a28";
+        ctx.fillText("MBR未満", 42, 40);
+      }
     }
 
     function syncLabels() {
@@ -963,7 +1037,10 @@
       $("vD").textContent = `${params.D.toFixed(3)} m`;
       $("vEA").textContent = `${params.EA.toFixed(0)} MN`;
       $("vCd").textContent = `${params.Cd.toFixed(2)}`;
-      $("vU").textContent = `${params.U.toFixed(2)} m/s`;
+      $("vMbr").textContent = `${params.mbr.toFixed(1)} m`;
+      $("vU").textContent = Math.abs(params.U) < 0.05
+        ? "0.00 m/s"
+        : `${params.U.toFixed(2)} m/s（${params.U > 0 ? "左→右" : "右→左"}）`;
       $("vProf").textContent = PROFILES[params.prof];
       $("vB0").textContent = `${params.b0.toFixed(0)} m`;
       $("vBL").textContent = `${params.bL.toFixed(0)} m`;
@@ -977,7 +1054,7 @@
     }
 
     function writeInputs() {
-      for (const id of ["L", "span", "depth", "zFair", "drop", "mass", "D", "EA", "Cd", "U", "prof", "b0", "bL", "bD", "bW"]) {
+      for (const id of ["L", "span", "depth", "zFair", "drop", "mass", "D", "EA", "Cd", "mbr", "U", "prof", "b0", "bL", "bD", "bW"]) {
         $(id).value = params[id];
       }
       $("wet").checked = params.wet;
@@ -1011,7 +1088,7 @@
       const map = {
         L: ["L", 1], span: ["span", 1], depth: ["depth", 1], zFair: ["zFair", 1],
         drop: ["drop", 1], mass: ["mass", 1], D: ["D", 1], EA: ["EA", 1],
-        Cd: ["Cd", 1], U: ["U", 1], prof: ["prof", 1],
+        Cd: ["Cd", 1], mbr: ["mbr", 1], U: ["U", 1], prof: ["prof", 1],
         b0: ["b0", 1], bL: ["bL", 1], bD: ["bD", 1], bW: ["bW", 1],
       };
       for (const [id, spec] of Object.entries(map)) {
@@ -1019,7 +1096,10 @@
           params[spec[0]] = Number(e.target.value);
           syncLabels();
           if (id === "U") solveAll({ keepGhost: true });
-          else {
+          else if (id === "mbr") {
+            updateStats();
+            draw();
+          } else {
             lastGuess = null;
             solveAll();
           }
@@ -1055,7 +1135,8 @@
 
     function playFlow() {
       if (anim) cancelAnimationFrame(anim);
-      const target = Math.max(Number($("U").value) || 0, 0.8);
+      const raw = Number($("U").value) || 0;
+      const target = raw === 0 ? 0.8 : raw;
       if (params.mode === "hang") {
         params.wet = true;
         $("wet").checked = true;
@@ -1066,7 +1147,7 @@
       syncLabels();
       solveAll({ U: 0 });
       const start = performance.now();
-      const dur = 1100 + Math.min(target, 6) * 160;
+      const dur = 1100 + Math.min(Math.abs(target), 6) * 160;
       const step = (now) => {
         const k = Math.min(1, (now - start) / dur);
         const ease = 1 - Math.pow(1 - k, 2);
@@ -1087,7 +1168,7 @@
 
     function loop(now) {
       tArrow = now / 1000;
-      if (params.U > 0.02) draw();
+      if (Math.abs(params.U) > 0.02) draw();
       requestAnimationFrame(loop);
     }
 
