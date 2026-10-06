@@ -431,7 +431,7 @@
           fx += -0.15 * Math.abs(w) * Math.sign(Tx || 1);
           fz = 0;
         }
-        const Tx2 = Tx - fx * ds0;
+        let Tx2 = Tx - fx * ds0;
         let Tz2 = Tz - fz * ds0;
         const Txm = 0.5 * (Tx + Tx2);
         let Tzm = 0.5 * (Tz + Tz2);
@@ -453,7 +453,11 @@
           if (useBed && z[i + 1] <= bed) {
             z[i + 1] = bed;
             const mag2 = Math.hypot(Tx2, Tz2) || 1;
-            if (p.mode !== "lazy" || Tz2 > -0.18 * mag2) {
+            if (p.mode === "lazy" && Tz2 < -0.18 * mag2) {
+              /* 浮力が持ち上げるので着底させない */
+            } else if (p.mode === "moor" && Tx2 < 0.5 * mag2) {
+              Tz2 = Math.max(Tz2, 0);
+            } else {
               onBed = true;
               Tz2 = 0;
             }
@@ -693,7 +697,10 @@
       let dTx = (-e.e1 * J22 + e.e2 * J12) / det;
       let dTz = (-e.e2 * J11 + e.e1 * J21) / det;
       const nd = Math.hypot(dTx, dTz);
-      const cap = Math.max(Math.hypot(Tx, Tz) * 1.4, Math.abs(U) > 3 ? 2000 : 400);
+      const cap = Math.max(
+        Math.hypot(Tx, Tz) * 1.4,
+        p.mode === "moor" ? 12000 : (Math.abs(U) > 3 ? 2000 : 400)
+      );
       if (nd > cap) {
         dTx *= cap / nd;
         dTz *= cap / nd;
@@ -771,6 +778,47 @@
       return 0.5 * RHO * p.Cd * p.D * U * U;
     }
 
+    function refineNewton(p, U, Tx, Tz, nIt, tol) {
+      let cur = integratePick(p, Tx, Tz, U);
+      const e0 = endError(cur, p);
+      cur = { ...cur, err: Math.hypot(e0.e1, e0.e2), Tx, Tz };
+      for (let it = 0; it < nIt; it++) {
+        cur = newtonOnce(p, U, cur.Tx, cur.Tz);
+        if (cur.err < tol) break;
+      }
+      return cur;
+    }
+
+    function shootMoor(p, U, guess, m) {
+      const mo = m || analyticMooring(p);
+      const Lsusp = Math.min(p.L, Math.hypot(p.span, Math.max(p.depth - p.zFair, 1)) + p.depth * 0.5);
+      const dL = dragPerM(p, U) * Lsusp;
+      let Tx = (guess && isFinite(guess.Tx)) ? guess.Tx : Math.max(mo.Tx, 8);
+      let Tz = (guess && isFinite(guess.Tz)) ? guess.Tz : mo.Tz;
+      if (Math.abs(U) > 0.05) Tx = Math.max(Tx, mo.Tx, Math.abs(dL) * 1.15);
+      Tx = Math.max(Tx, 8);
+      if (!isFinite(Tz) || Tz > -1) Tz = mo.Tz || -Math.abs(wetWeight(p.mass, p.D, -1, p)) * 40;
+      let cur = fitH(p, U, Tx, Tz);
+      cur = refineNewton(p, U, cur.Tx, cur.Tz, Math.abs(U) > 1 ? 42 : 28, 0.2);
+      if (Math.abs(U) > 1 && cur.Tx < Math.abs(dL) * 0.6) {
+        const boosted = refineNewton(p, U, Math.max(mo.Tx, Math.abs(dL) * 1.2), Tz, 36, 0.2);
+        if (boosted.err <= cur.err + 1.5) cur = boosted;
+      }
+      if (cur.err < 0.35) return cur;
+      let best = cur;
+      const Tz0 = mo.Tz || Tz;
+      const Hs = [0.75, 1.15, 1.7].map((f) => Math.max(8, Tx * f));
+      const Tzs = [0.6, 1, 1.5].map((f) => Tz0 * f);
+      for (const h of Hs) {
+        for (const t of Tzs) {
+          let c = refineNewton(p, U, h, t, 14, 0.25);
+          if (c.err < best.err) best = c;
+          if (best.err < 0.3) return best;
+        }
+      }
+      return best;
+    }
+
     function shootTension(p, U, guess) {
       const w = wetWeight(p.mass, p.D, -1, p);
       const aw = Math.abs(w) || 50;
@@ -803,8 +851,9 @@
       }
 
       const m = analyticMooring(p);
-      if (p.mode === "moor" && U === 0 && !m.taut && !useBending(p)) {
-        return buildCatenaryMooring(p);
+      if (p.mode === "moor") {
+        if (Math.abs(U) < 1e-6 && !m.taut) return buildCatenaryMooring(p);
+        return shootMoor(p, U, guess, m);
       }
       if (p.mode === "lazy") {
         let Tx = (guess && guess.Tx) || Math.max(Math.abs(wetWeight(p.mass, p.D, -1, p)) * 25, 2000);
