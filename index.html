@@ -207,7 +207,7 @@
 <body>
   <header>
     <h1>カテナリー静的シミュレーター</h1>
-    <p>OrcaFlex の静的ライン解析の超簡易版 · 2D · 曲げ剛性なし · 流れは Morison 抗力</p>
+    <p>OrcaFlex の静的ライン解析の超簡易版 · 2D · 曲げ剛性 EI · 流れは Morison 抗力</p>
   </header>
 
   <div class="wrap">
@@ -253,6 +253,8 @@
         <input type="range" id="D" min="0.02" max="0.45" step="0.002"></label>
       <label class="ctrl"><span class="ctrl-top"><span>軸剛性 EA</span><span class="val" id="vEA"></span></span>
         <input type="range" id="EA" min="5" max="400" step="1"></label>
+      <label class="ctrl"><span class="ctrl-top"><span>曲げ剛性 EI</span><span class="val" id="vEI"></span></span>
+        <input type="range" id="ei" min="0" max="200" step="0.5"></label>
       <label class="ctrl"><span class="ctrl-top"><span>法線抗力係数 Cd</span><span class="val" id="vCd"></span></span>
         <input type="range" id="Cd" min="0.2" max="2.0" step="0.05"></label>
       <label class="ctrl"><span class="ctrl-top"><span>最小曲げ半径 MBR</span><span class="val" id="vMbr"></span></span>
@@ -282,10 +284,11 @@
       <p class="warn" id="warn"></p>
 
       <div class="note">
-        各節点で張力・水中重量・Morison 抗力の釣り合いを解き、静的な形を出しています。
-        波・浮体運動・曲げ剛性・3D は入れていません。MBR はできた形の判定だけで、曲がりすぎを防いではいません。カテナリーの
-        <code>y = a cosh(x/a)</code>（<code>a = H/w</code>）は流れなし・着底なしのときだけ厳密です。
-        流れが入ると見かけの「重力」が傾き、ライン全体が下流へ押し出されます。流速は負にすると右→左になります。
+        各節点で張力・水中重量・Morison 抗力の釣り合いを解きます。EI を入れると、吊り線は曲げモーメントも釣らせ、
+        係留・レイジーウェーブは着底点などの急な曲がりを丸めます。両端はピンです。波・浮体運動・3D は入れていません。
+        EI＝0 のときは従来のカテナリーです。MBR はできた形の判定です。EI を上げると曲率半径が大きくなります。
+        カテナリーの <code>y = a cosh(x/a)</code>（<code>a = H/w</code>）は流れなし・EI＝0・着底なしのときだけ厳密です。
+        流速は負にすると右→左になります。
       </div>
     </aside>
   </div>
@@ -316,6 +319,7 @@
       mass: 8,
       D: 0.04,
       EA: 40,
+      ei: 0,
       Cd: 1.2,
       mbr: 1.5,
       U: 0,
@@ -330,18 +334,19 @@
 
     const presets = {
       hang: [
-        { name: "教科書", L: 52, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
-        { name: "たるみ大", L: 70, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
-        { name: "流れで流される", L: 55, span: 40, drop: 0, mass: 6, D: 0.12, EA: 30, Cd: 1.4, U: 3, wet: true, mbr: 2 },
-        { name: "逆向きの流れ", L: 55, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, Cd: 1.2, U: -3, wet: true, mbr: 1.5 },
+        { name: "教科書", L: 52, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, ei: 0, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
+        { name: "たるみ大", L: 70, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, ei: 0, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
+        { name: "曲げ剛性あり", L: 52, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, ei: 12, Cd: 1.2, U: 0, wet: false, mbr: 1.5 },
+        { name: "流れで流される", L: 55, span: 40, drop: 0, mass: 6, D: 0.12, EA: 30, ei: 0, Cd: 1.4, U: 3, wet: true, mbr: 2 },
+        { name: "逆向きの流れ", L: 55, span: 40, drop: 0, mass: 8, D: 0.04, EA: 40, ei: 0, Cd: 1.2, U: -3, wet: true, mbr: 1.5 },
       ],
       moor: [
-        { name: "浅い係留", L: 220, span: 180, depth: 80, zFair: 10, mass: 90, D: 0.08, EA: 200, Cd: 1.0, U: 0, mbr: 1 },
-        { name: "秋田イメージ 400m", L: 620, span: 500, depth: 400, zFair: 20, mass: 140, D: 0.1, EA: 300, Cd: 1.0, U: 0.5, mbr: 1.2 },
+        { name: "浅い係留", L: 220, span: 180, depth: 80, zFair: 10, mass: 90, D: 0.08, EA: 200, ei: 8, Cd: 1.0, U: 0, mbr: 1 },
+        { name: "秋田イメージ 400m", L: 620, span: 500, depth: 400, zFair: 20, mass: 140, D: 0.1, EA: 300, ei: 12, Cd: 1.0, U: 0.5, mbr: 1.2 },
       ],
       lazy: [
-        { name: "66 kV レイジーウェーブ", L: 320, span: 220, depth: 100, zFair: 15, mass: 55.8, D: 0.184, EA: 80, Cd: 1.2, U: 0, b0: 70, bL: 90, bD: 0.39, bW: 948, mbr: 4 },
-        { name: "OC3 風 320 m", L: 530, span: 380, depth: 320, zFair: 20, mass: 55.8, D: 0.184, EA: 120, Cd: 1.2, U: 0.8, b0: 140, bL: 120, bD: 0.39, bW: 948, mbr: 4 },
+        { name: "66 kV レイジーウェーブ", L: 320, span: 220, depth: 100, zFair: 15, mass: 55.8, D: 0.184, EA: 80, ei: 25, Cd: 1.2, U: 0, b0: 70, bL: 90, bD: 0.39, bW: 948, mbr: 4 },
+        { name: "OC3 風 320 m", L: 530, span: 380, depth: 320, zFair: 20, mass: 55.8, D: 0.184, EA: 120, ei: 25, Cd: 1.2, U: 0.8, b0: 140, bL: 120, bD: 0.39, bW: 948, mbr: 4 },
       ],
     };
 
@@ -461,6 +466,182 @@
       return { x, z, T, endX: x[n], endZ: z[n], Tx0, Tz0 };
     }
 
+    function useBending(p) {
+      return (p.ei || 0) >= 0.15;
+    }
+
+    function integratePick(p, Tx0, Tz0, U) {
+      if (!useBending(p)) return integrate(p, Tx0, Tz0, U);
+      let th = Math.atan2(Tz0, Tx0);
+      if (!isFinite(th)) th = p.mode === "hang" ? -0.7 : -1.0;
+      const r = integrateRod(p, Tx0, Tz0, th, U);
+      return { ...r, Tx0, Tz0, th, fromRod: true };
+    }
+
+    function relaxBending(p, src, U) {
+      const n = NSEG;
+      const x = Float64Array.from(src.x);
+      const z = Float64Array.from(src.z);
+      const EI = Math.max(p.ei, 0.15) * 1e3;
+      const bed = p.mode === "hang" ? -1e9 : -p.depth;
+      const zTop = p.mode === "hang" ? 0 : -p.zFair;
+      const zBot = p.mode === "hang" ? -p.drop : -p.depth;
+      if (p.mode !== "hang" && x[n] > 1) {
+        const sx = p.span / x[n];
+        if (Math.abs(sx - 1) < 0.4) {
+          for (let i = 0; i <= n; i++) x[i] *= sx;
+        }
+      }
+      x[0] = 0;
+      z[0] = zTop;
+      x[n] = p.span;
+      z[n] = zBot;
+      const mix = Math.min(0.22, EI / (EI + 8000));
+      const onB = (j) => p.mode !== "hang" && z[j] <= bed + 0.2;
+      const kCut = 1 / Math.max(p.mbr * 1.8, 6);
+      for (let it = 0; it < 35; it++) {
+        const nx = Float64Array.from(x);
+        const nz = Float64Array.from(z);
+        for (let i = 1; i < n; i++) {
+          if (onB(i - 1) && onB(i) && onB(i + 1)) continue;
+          const dx1 = x[i] - x[i - 1];
+          const dz1 = z[i] - z[i - 1];
+          const dx2 = x[i + 1] - x[i];
+          const dz2 = z[i + 1] - z[i];
+          let da = Math.atan2(dz2, dx2) - Math.atan2(dz1, dx1);
+          while (da > Math.PI) da -= 2 * Math.PI;
+          while (da < -Math.PI) da += 2 * Math.PI;
+          const ds = 0.5 * (Math.hypot(dx1, dz1) + Math.hypot(dx2, dz2));
+          const kappa = ds > 1e-4 ? Math.abs(da) / ds : 0;
+          if (kappa < kCut) continue;
+          const a = mix * Math.min(1, kappa / (kCut * 3));
+          nx[i] = x[i] + a * (0.5 * (x[i - 1] + x[i + 1]) - x[i]);
+          nz[i] = z[i] + a * (0.5 * (z[i - 1] + z[i + 1]) - z[i]);
+          if (nz[i] < bed) nz[i] = bed;
+        }
+        nx[0] = 0;
+        nz[0] = zTop;
+        nx[n] = p.span;
+        nz[n] = zBot;
+        x.set(nx);
+        z.set(nz);
+      }
+      const T = new Float64Array(n);
+      if (src.T) {
+        for (let i = 0; i < n; i++) T[i] = src.T[i];
+      } else {
+        T.fill(Math.hypot(src.Tx || 1000, src.Tz || 1000));
+      }
+      return {
+        x, z, T,
+        endX: x[n],
+        endZ: z[n],
+        err: Math.hypot(x[n] - p.span, z[n] - zBot),
+        Tx: src.Tx,
+        Tz: src.Tz,
+        th: src.th,
+        fromRod: true,
+      };
+    }
+
+    function integrateRod(p, Nx0, Nz0, th0, U) {
+      const n = NSEG;
+      const ds0 = p.L / n;
+      const EA = Math.max(p.EA, 1) * 1e6;
+      const EI = Math.max(p.ei, 0.15) * 1e3;
+      const x = new Float64Array(n + 1);
+      const z = new Float64Array(n + 1);
+      const T = new Float64Array(n);
+      const useBed = p.mode !== "hang";
+      const bed = useBed ? -p.depth : -1e9;
+      const kBed = 4e4;
+      const Ct = 0.03;
+      x[0] = 0;
+      z[0] = p.mode === "hang" ? 0 : -p.zFair;
+      let Nx = Nx0;
+      let Nz = Nz0;
+      let th = th0;
+      let M = 0;
+
+      function load(s, zz, theta, nx, nz) {
+        const sp = segProps(s, p);
+        const tx = Math.cos(theta);
+        const tz = Math.sin(theta);
+        const w = wetWeight(sp.mass, sp.D, zz, p);
+        let fx = 0;
+        let fz = -w;
+        const inWater = p.mode === "hang" ? p.wet : (zz <= 0);
+        if (inWater && U !== 0 && zz > bed + 0.03) {
+          const Uloc = currentAt(zz, U, waterDepth(p), p.prof);
+          const vt = Uloc * tx;
+          const vnx = Uloc - vt * tx;
+          const vnz = -vt * tz;
+          const vn = Math.hypot(vnx, vnz);
+          fx += 0.5 * RHO * p.Cd * sp.D * vn * vnx;
+          fz += 0.5 * RHO * p.Cd * sp.D * vn * vnz;
+          const Ft = 0.5 * RHO * Ct * Math.PI * sp.D * Math.abs(vt) * vt;
+          fx += Ft * tx;
+          fz += Ft * tz;
+        }
+        if (useBed && zz < bed) {
+          const pen = Math.min(bed - zz, 3);
+          fz += kBed * pen;
+          fx += -0.12 * kBed * pen * Math.sign(nx || 1);
+        }
+        const axial = nx * tx + nz * tz;
+        return { fx, fz, stretch: Math.max(0.5, 1 + axial / EA), tx, tz };
+      }
+
+      function step(s, xx, zz, theta, MM, nx, nz, ds) {
+        const kmax = 2.0;
+        const a = load(s, zz, theta, nx, nz);
+        const dth1 = Math.max(-kmax, Math.min(kmax, MM / EI));
+        const dM1 = nz * Math.cos(theta) - nx * Math.sin(theta);
+        const thm = theta + 0.5 * ds * dth1;
+        const Mm = MM + 0.5 * ds * dM1;
+        const nxm = nx - 0.5 * ds * a.fx;
+        const nzm = nz - 0.5 * ds * a.fz;
+        const zm = zz + 0.5 * ds * a.stretch * a.tz;
+        const b = load(s + 0.5 * ds, zm, thm, nxm, nzm);
+        const dth2 = Math.max(-kmax, Math.min(kmax, Mm / EI));
+        const dM2 = nzm * Math.cos(thm) - nxm * Math.sin(thm);
+        let z2 = zz + ds * 0.5 * (a.stretch * a.tz + b.stretch * b.tz);
+        if (useBed && z2 < bed - 2) z2 = bed - 2;
+        return {
+          x: xx + ds * 0.5 * (a.stretch * a.tx + b.stretch * b.tx),
+          z: z2,
+          th: theta + ds * 0.5 * (dth1 + dth2),
+          M: MM + ds * 0.5 * (dM1 + dM2),
+          Nx: nx - ds * 0.5 * (a.fx + b.fx),
+          Nz: nz - ds * 0.5 * (a.fz + b.fz),
+        };
+      }
+
+      for (let i = 0; i < n; i++) {
+        const s0 = i * ds0;
+        const nSub = 4;
+        const ds = ds0 / nSub;
+        let xx = x[i];
+        let zz = z[i];
+        for (let k = 0; k < nSub; k++) {
+          const st = step(s0 + k * ds, xx, zz, th, M, Nx, Nz, ds);
+          xx = st.x;
+          zz = st.z;
+          th = st.th;
+          M = st.M;
+          Nx = st.Nx;
+          Nz = st.Nz;
+          if (!isFinite(th) || !isFinite(M) || !isFinite(xx)) {
+            return { x, z, T, endX: xx, endZ: zz, endM: M, Tx: Nx0, Tz: Nz0, th: th0, fromRod: true, failed: true };
+          }
+        }
+        x[i + 1] = xx;
+        z[i + 1] = zz;
+        T[i] = Math.hypot(Nx, Nz);
+      }
+      return { x, z, T, endX: x[n], endZ: z[n], endM: M, Tx: Nx0, Tz: Nz0, th: th0, fromRod: true };
+    }
+
     function analyticMooring(p) {
       const w = Math.abs(wetWeight(p.mass, p.D, -1, p)) || 50;
       const dZ = Math.max(p.depth - p.zFair, 0.5);
@@ -495,12 +676,12 @@
     }
 
     function newtonOnce(p, U, Tx, Tz) {
-      const r = integrate(p, Tx, Tz, U);
+      const r = integratePick(p, Tx, Tz, U);
       const e = endError(r, p);
       const err0 = Math.hypot(e.e1, e.e2);
       const eps = Math.max(Math.hypot(Tx, Tz) * 1e-5, 2);
-      const r1 = integrate(p, Tx + eps, Tz, U);
-      const r2 = integrate(p, Tx, Tz + eps, U);
+      const r1 = integratePick(p, Tx + eps, Tz, U);
+      const r2 = integratePick(p, Tx, Tz + eps, U);
       const f1 = endError(r1, p);
       const f2 = endError(r2, p);
       const J11 = (f1.e1 - e.e1) / eps;
@@ -522,7 +703,7 @@
       for (let k = 0; k < 8; k++) {
         const nTx = Tx + step * dTx;
         const nTz = Tz + step * dTz;
-        const rr = integrate(p, nTx, nTz, U);
+        const rr = integratePick(p, nTx, nTz, U);
         const ee = endError(rr, p);
         const err = Math.hypot(ee.e1, ee.e2);
         if (err < best.err) best = { ...rr, err, Tx: nTx, Tz: nTz };
@@ -569,7 +750,7 @@
       const zBot = p.mode === "hang" ? -p.drop : -p.depth;
       let best = null;
       for (let i = 0; i < 22; i++) {
-        const r = integrate(p, H, Tz0, U);
+        const r = integratePick(p, H, Tz0, U);
         const e1 = r.endX - p.span;
         const e2 = r.endZ - zBot;
         const err = Math.hypot(e1, e2);
@@ -577,7 +758,7 @@
         if (!best || err < best.err) best = cur;
         if (err < 0.08) return cur;
         const d = Math.max(H * 0.015, 25);
-        const r2 = integrate(p, H + d, Tz0, U);
+        const r2 = integratePick(p, H + d, Tz0, U);
         const de = (r2.endX - r.endX) / d;
         if (Math.abs(de) < 1e-12) break;
         H -= 0.75 * e1 / de;
@@ -590,7 +771,7 @@
       return 0.5 * RHO * p.Cd * p.D * U * U;
     }
 
-    function shoot(p, U, guess) {
+    function shootTension(p, U, guess) {
       const w = wetWeight(p.mass, p.D, -1, p);
       const aw = Math.abs(w) || 50;
       const dL = dragPerM(p, U) * p.L;
@@ -610,10 +791,10 @@
         let Tz = guess && guess.Tz ? guess.Tz : -aw * a * Math.sinh(p.span / (2 * Math.max(a, 0.2)));
         Tx = Math.max(Tx, 5);
         if (U > 0) Tx = Math.max(Tx, dL * 0.55);
-        let cur = integrate(p, Tx, Tz, U);
+        let cur = integratePick(p, Tx, Tz, U);
         const e0 = endError(cur, p);
         cur = { ...cur, err: Math.hypot(e0.e1, e0.e2), Tx, Tz };
-        const nIt = Math.abs(U) > 2 ? 40 : 22;
+        const nIt = useBending(p) ? 36 : (Math.abs(U) > 2 ? 40 : 22);
         for (let it = 0; it < nIt; it++) {
           cur = newtonOnce(p, U, cur.Tx, cur.Tz);
           if (cur.err < 0.08) break;
@@ -622,7 +803,7 @@
       }
 
       const m = analyticMooring(p);
-      if (p.mode === "moor" && U === 0 && !m.taut) {
+      if (p.mode === "moor" && U === 0 && !m.taut && !useBending(p)) {
         return buildCatenaryMooring(p);
       }
       if (p.mode === "lazy") {
@@ -640,6 +821,42 @@
       return fitH(p, U, Math.max(g.Tx, U > 0 ? dL * 0.4 : 8), g.Tz);
     }
 
+    function shoot(p, U, guess) {
+      if (!useBending(p)) return shootTension(p, U, guess);
+      if (p.mode !== "hang") {
+        const cable = shootTension(Object.assign({}, p, { ei: 0 }), U, guess);
+        return relaxBending(p, cable, U);
+      }
+      if (guess && guess.fromRod && isFinite(guess.Tx)) {
+        const r = shootTension(p, U, guess);
+        if (r) {
+          r.fromRod = true;
+          r.th = Math.atan2(r.Tz, r.Tx);
+        }
+        return r;
+      }
+      const cable = shootTension(Object.assign({}, p, { ei: 0 }), U, guess);
+      const target = p.ei;
+      const stages = [];
+      let val = 0.3;
+      while (val < target * 0.9) {
+        stages.push(val);
+        val *= 2.2;
+      }
+      stages.push(target);
+      let cur = cable;
+      for (const ei of stages) {
+        const p2 = Object.assign({}, p, { ei });
+        const nxt = shootTension(p2, U, cur);
+        if (nxt && isFinite(nxt.Tx) && (nxt.err == null || nxt.err < 8)) {
+          nxt.fromRod = true;
+          nxt.th = Math.atan2(nxt.Tz, nxt.Tx);
+          cur = nxt;
+        }
+      }
+      return cur;
+    }
+
     function shootRamped(p, U, guess) {
       if (Math.abs(U) <= 0.6) return shoot(p, U, guess);
       const n = Math.ceil(Math.abs(U) / 0.5);
@@ -647,7 +864,9 @@
       let r = null;
       for (let i = 1; i <= n; i++) {
         r = shoot(p, (U * i) / n, g);
-        if (r && isFinite(r.Tx) && isFinite(r.Tz)) g = { Tx: r.Tx, Tz: r.Tz };
+        if (r && isFinite(r.Tx) && isFinite(r.Tz)) {
+          g = { Tx: r.Tx, Tz: r.Tz, th: r.th, fromRod: !!r.fromRod };
+        }
       }
       return r;
     }
@@ -747,8 +966,8 @@
       nodes = { x: r.x, z: r.z };
       lastT = r.T;
       lastMeta = r;
-      lastGuess = { Tx: r.Tx, Tz: r.Tz };
-      if (p.mode === "lazy" && r.x[NSEG] > p.span * 0.45) {
+      lastGuess = { Tx: r.Tx, Tz: r.Tz, th: r.th, fromRod: !!r.fromRod };
+      if (p.mode === "lazy" && !useBending(p) && r.x[NSEG] > p.span * 0.45) {
         const sx = p.span / r.x[NSEG];
         if (Math.abs(sx - 1) > 0.002 && Math.abs(sx - 1) < 0.35) {
           for (let i = 0; i <= NSEG; i++) nodes.x[i] *= sx;
@@ -787,16 +1006,22 @@
       if (params.L < chord * 1.002) msg = "長さが足りず、ほぼ直線に引っ張られています（高張力）。";
       const th = theoreticalSag(params);
       const err = lastMeta && lastMeta.err != null ? lastMeta.err : 0;
-      if (th && params.U === 0 && !(params.wet && params.U !== 0)) {
+      if (th && params.U === 0 && !useBending(params) && !(params.wet && params.U !== 0)) {
         $("status").textContent =
           `端点誤差 ${fmt(err, 3)} m · 理論サグ ${fmt(th, 2)} m · 数値サグ ${fmt(-a.sagZ, 2)} m`;
       } else {
-        $("status").textContent = `端点誤差 ${fmt(err, 3)} m · 節点 ${NSEG + 1}`;
+        $("status").textContent = `端点誤差 ${fmt(err, 3)} m · 節点 ${NSEG + 1}` +
+          (useBending(params) ? ` · 端 (${fmt(lastMeta.endX, 1)}, ${fmt(lastMeta.endZ, 1)}) m` : "");
       }
       if (err > 3) msg = (msg ? msg + " " : "") + "端点が目標に乗っていません。長さ・水深・水平距離を見直してください。";
       if (a.minR < params.mbr) {
         msg = (msg ? msg + " " : "") +
-          `最小曲率半径 ${fmt(a.minR, 2)} m が MBR ${fmt(params.mbr, 1)} m を下回っています（赤）。形は曲げ剛性なしのままです。`;
+          `最小曲率半径 ${fmt(a.minR, 2)} m が MBR ${fmt(params.mbr, 1)} m を下回っています（赤）。`;
+        if (!useBending(params)) {
+          msg += " EI＝0 なので折れ曲がりを止められません。曲げ剛性を入れてください。";
+        } else {
+          msg += " EI を上げると曲がりが緩くなります。";
+        }
       }
       $("warn").textContent = msg;
     }
@@ -1036,6 +1261,7 @@
       $("vMass").textContent = `${params.mass.toFixed(1)} kg/m`;
       $("vD").textContent = `${params.D.toFixed(3)} m`;
       $("vEA").textContent = `${params.EA.toFixed(0)} MN`;
+      $("vEI").textContent = `${params.ei.toFixed(1)} kN·m²`;
       $("vCd").textContent = `${params.Cd.toFixed(2)}`;
       $("vMbr").textContent = `${params.mbr.toFixed(1)} m`;
       $("vU").textContent = Math.abs(params.U) < 0.05
@@ -1054,7 +1280,7 @@
     }
 
     function writeInputs() {
-      for (const id of ["L", "span", "depth", "zFair", "drop", "mass", "D", "EA", "Cd", "mbr", "U", "prof", "b0", "bL", "bD", "bW"]) {
+      for (const id of ["L", "span", "depth", "zFair", "drop", "mass", "D", "EA", "ei", "Cd", "mbr", "U", "prof", "b0", "bL", "bD", "bW"]) {
         $(id).value = params[id];
       }
       $("wet").checked = params.wet;
@@ -1088,7 +1314,7 @@
       const map = {
         L: ["L", 1], span: ["span", 1], depth: ["depth", 1], zFair: ["zFair", 1],
         drop: ["drop", 1], mass: ["mass", 1], D: ["D", 1], EA: ["EA", 1],
-        Cd: ["Cd", 1], mbr: ["mbr", 1], U: ["U", 1], prof: ["prof", 1],
+        ei: ["ei", 1], Cd: ["Cd", 1], mbr: ["mbr", 1], U: ["U", 1], prof: ["prof", 1],
         b0: ["b0", 1], bL: ["bL", 1], bD: ["bD", 1], bW: ["bW", 1],
       };
       for (const [id, spec] of Object.entries(map)) {
